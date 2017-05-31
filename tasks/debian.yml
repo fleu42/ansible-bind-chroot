@@ -1,0 +1,13 @@
+---
+
+- name: debian | Install bind9 server and utils
+  apt:
+    name: "{{ item }}"
+    install_recommends: no
+    update_cache: yes
+    cache_valid_time: 84600
+    state: latest
+  with_items:
+    - bind9utils
+    - bind9
+

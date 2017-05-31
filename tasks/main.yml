@@ -1,0 +1,13 @@
+---
+
+- include: debian.yml
+  when: ansible_os_family == "Debian"
+  tags: [ 'install_bind', 'install', 'named', 'bind' ]
+
+- include: redhat.yml
+  when: ansible_os_family == "RedHat" 
+  tags: [ 'install_bind', 'install', 'named', 'bind' ]
+
+- include: configure_debian.yml
+  when: ansible_os_family == "Debian"
+  tags: [ 'configure_bind', 'configure', 'named', 'bind' ]

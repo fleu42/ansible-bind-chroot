@@ -1,0 +1,130 @@
+---
+
+- command: ls /etc/systemd/system/bind9.service
+  register: service_file_present
+  ignore_errors: True
+
+- name: debian | disable systemd bind service 
+  systemd:
+    name: bind9
+    enabled: no 
+    daemon_reload: yes
+  when: service_file_present|failed
+
+- name: debian | set bind9 systemd service file.
+  copy:
+    src: files/etc/systemd/system/bind9.service
+    dest: /etc/systemd/system/bind9.service
+    owner: root
+    group: root
+    mode: 0440
+
+- name: debian | enable systemd bind service 
+  systemd:
+    name: bind9
+    enabled: yes 
+    daemon_reload: yes
+  when: service_file_present|failed
+
+- name: debian | create chroot directories.
+  file:
+    path: "/var/bind9/{{ item }}"
+    owner: root
+    group: root
+    mode: 0775
+    state: directory
+  with_items:
+    - chroot
+    - chroot/etc
+    - chroot/dev
+    - chroot/var
+    - chroot/var/cache
+    - chroot/var/run/
+
+- name: debian | create chroot directories belonging to bind user.
+  file:
+    path: "/var/bind9/chroot/{{ item }}"
+    owner: root
+    group: bind
+    mode: 0775
+    state: directory
+  with_items:
+    - etc/bind
+    - var/cache/bind
+    - var/log
+    - var/bind
+    - var/run/named
+
+- name: debian | create mknod devices in chroot.
+  command: "mknod -m 0660 {{ item.localdev }} c 1 {{ item.localvalue }} creates={{ item.localdev }}"
+  with_items:
+    - { localdev: '/var/bind9/chroot/dev/null', localvalue: '3'}
+    - { localdev: '/var/bind9/chroot/dev/random', localvalue: '8'}
+    - { localdev: '/var/bind9/chroot/dev/urandom', localvalue: '9'}
+
+- name: debian | copy default files in chroot.
+  copy:
+    src: "files/etc/bind/{{ item }}"
+    dest: "/var/bind9/chroot/etc/bind/{{ item }}"
+    owner: bind
+    group: bind
+    mode: 0440
+  with_items:
+    - bind.keys
+    - db.0
+    - db.127
+    - db.255 
+    - db.empty
+    - db.local
+    - db.root
+    - named.conf
+    - named.conf.default-zones
+    - named.conf.options
+    - rndc.key
+    - zones.rfc1918
+
+- command: test -h /etc/bind
+  register: etc_bind_is_link
+  ignore_errors: True
+
+- name: debian | delete /etc/bind directory.
+  file:
+    path: /etc/bind
+    state: absent
+  when: etc_bind_is_link|failed
+
+- name: debian | localtime in chroot
+  command: cp /etc/localtime /var/bind9/chroot/etc/ creates=/var/bind9/chroot/etc/localtime
+
+- name: debian | ensure PIDFILE is chrooted.
+  lineinfile:
+    dest: /etc/init.d/bind9
+    regexp: '^PIDFILE='
+    line: 'PIDFILE=/var/bind9/chroot/var/run/named/named.pid'
+
+- name: debian | create link to chrooted etc.
+  file:
+    src: /var/bind9/chroot/etc/bind
+    dest: /etc/bind 
+    state: link
+  notify:
+   - restart bind
+
+- name: debian | touch our zone
+  file: 
+    path: "/var/bind9/chroot/var/bind/db.{{ item.name }}"
+    state: touch
+  with_items:
+    - "{{ bind_zones }}"
+
+- name: debian | copy our configuration.
+  template:
+    src: "etc/bind/{{ item }}.j2"
+    dest: "/var/bind9/chroot/etc/bind/{{ item }}"
+    owner: bind
+    group: bind
+    mode: 0440
+  with_items:
+    - named.conf.local
+  notify:
+    - restart bind

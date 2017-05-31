@@ -1,0 +1,13 @@
+---
+
+- name: redhat | Install bind9 and utils
+  yum:
+    name: "{{ item }}"
+    update_cache: yes
+    state: latest
+  with_items:
+    - bind
+    - bind-chroot
+    - bind-utils
+
+
